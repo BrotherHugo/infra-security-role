@@ -1,0 +1,24 @@
+[project]
+name = "brotherhugo-harden"
+version = "0.0.0"
+description = "Ansible role for Ubuntu/Debian host hardening"
+
+[tool.semantic_release]
+commit_parser = "conventional"
+tag_format = "v{version}"
+allow_zero_version = true
+major_on_zero = false
+version_toml = ["pyproject.toml:project.version"]
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+prerelease = false
+
+[tool.semantic_release.remote]
+type = "github"
+
+[tool.semantic_release.changelog]
+template_dir = ".semantic-release-templates"
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = false
