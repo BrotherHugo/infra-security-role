@@ -1,0 +1,8 @@
+[sshd]
+enabled = true
+port = {{ harden.ssh.port }}
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = {{ harden.fail2ban.jails.sshd.maxretry }}
+bantime = {{ harden.fail2ban.jails.sshd.bantime }}
+findtime = {{ harden.fail2ban.jails.sshd.findtime }}

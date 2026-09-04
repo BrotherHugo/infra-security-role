@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Minimal sshd_config — security settings in sshd_config.d/
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+Subsystem sftp /usr/lib/openssh/sftp-server

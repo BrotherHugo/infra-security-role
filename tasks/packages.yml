@@ -1,0 +1,46 @@
+---
+- name: Build security package list
+  ansible.builtin.set_fact:
+    _harden_packages: >-
+      {{
+        ([] if not harden.packages.fail2ban else ['fail2ban'])
+        + ([] if not harden.packages.auditd else ['auditd'])
+        + ([] if not harden.packages.apparmor_utils else ['apparmor-utils'])
+        + ([] if not harden.packages.lynis else ['lynis'])
+        + ([] if not harden.packages.rkhunter else ['rkhunter'])
+        + ([] if not harden.packages.chkrootkit else ['chkrootkit'])
+      }}
+
+- name: Install security packages
+  ansible.builtin.apt:
+    name: "{{ _harden_packages }}"
+    state: present
+    update_cache: true
+  when: _harden_packages | length > 0
+
+- name: Initialize rkhunter database
+  ansible.builtin.command: rkhunter --update
+  args:
+    creates: /var/lib/rkhunter/db/rkhunter.dat
+  when: harden.packages.rkhunter | bool
+  changed_when: false
+
+- name: Remove legacy rkhunter daily cron from role
+  ansible.builtin.file:
+    path: /etc/cron.daily/rkhunter
+    state: absent
+
+- name: Remove legacy chkrootkit daily cron from role
+  ansible.builtin.file:
+    path: /etc/cron.daily/chkrootkit
+    state: absent
+
+- name: Remove legacy rkhunter logrotate from role
+  ansible.builtin.file:
+    path: /etc/logrotate.d/rkhunter
+    state: absent
+
+- name: Remove legacy chkrootkit logrotate from role
+  ansible.builtin.file:
+    path: /etc/logrotate.d/chkrootkit
+    state: absent

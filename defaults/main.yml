@@ -1,0 +1,112 @@
+---
+# Universal Ansible role for hardening Ubuntu/Debian hosts.
+# All settings live under harden:; override in group_vars / host_vars.
+
+harden:
+  ssh:
+    enabled: true
+    # sshd port and fail2ban sshd jail. UFW rule — explicitly in harden.firewall.rules.
+    port: 22
+    permit_root_login: false
+    password_authentication: false
+    pubkey_authentication: true
+    max_auth_tries: 3
+    allow_tcp_forwarding: false
+    allow_agent_forwarding: false
+    x11_forwarding: false
+    client_alive_interval: 300
+    client_alive_count_max: 2
+    login_grace_time: 30
+    use_dns: false
+    dropin_path: /etc/ssh/sshd_config.d/99-harden.conf
+    manage_main_config: true
+
+  admin_user:
+    enabled: false
+    name: admin
+    groups:
+      - sudo
+    sudo_nopasswd: false
+    password: null
+    authorized_keys: []
+    authorized_keys_file: null
+
+  firewall:
+    manage: false
+    force_reset: false
+    default_incoming: deny
+    default_outgoing: allow
+    rules: []
+    extra_rules: []
+
+  fail2ban:
+    enabled: true
+    jails:
+      sshd:
+        enabled: true
+        maxretry: 3
+        bantime: 86400
+        findtime: 600
+      nginx-limit-req:
+        enabled: false
+        logpath: /var/log/nginx/access.log
+        maxretry: 10
+        bantime: 7200
+        findtime: 600
+
+  auditd:
+    enabled: true
+    fim_paths:
+      - { path: /etc/ssh/sshd_config, permissions: wa, key: sshd_config }
+      - { path: /etc/passwd, permissions: wa, key: passwd }
+      - { path: /etc/shadow, permissions: wa, key: shadow }
+      - { path: /etc/sudoers, permissions: wa, key: sudoers }
+      - { path: /etc/fail2ban/jail.local, permissions: wa, key: fail2ban_config }
+      - { path: /etc/audit/auditd.conf, permissions: wa, key: auditd_config }
+      - { path: /etc/ufw/user.rules, permissions: wa, key: ufw_config }
+    fim_paths_extra: []
+
+  unattended_upgrades:
+    enabled: true
+    automatic_reboot: true
+    automatic_reboot_time: "02:00"
+    security_only: true
+
+  sysctl:
+    enabled: true
+    parameters:
+      - { name: net.ipv4.conf.all.rp_filter, value: "1" }
+      - { name: net.ipv4.conf.default.rp_filter, value: "1" }
+      - { name: net.ipv4.conf.all.accept_redirects, value: "0" }
+      - { name: net.ipv4.conf.default.accept_redirects, value: "0" }
+      - { name: net.ipv4.conf.all.secure_redirects, value: "0" }
+      - { name: net.ipv4.conf.default.secure_redirects, value: "0" }
+      - { name: net.ipv4.conf.all.send_redirects, value: "0" }
+      - { name: net.ipv4.conf.default.send_redirects, value: "0" }
+      - { name: net.ipv4.tcp_syncookies, value: "1" }
+      - { name: net.ipv4.tcp_max_syn_backlog, value: "2048" }
+      - { name: net.ipv4.tcp_synack_retries, value: "2" }
+      - { name: net.ipv4.tcp_syn_retries, value: "5" }
+      - { name: net.ipv4.tcp_timestamps, value: "0" }
+      - { name: net.ipv4.conf.all.log_martians, value: "1" }
+      - { name: net.ipv4.conf.default.log_martians, value: "1" }
+      - { name: net.ipv4.icmp_echo_ignore_broadcasts, value: "1" }
+      - { name: net.ipv4.icmp_ignore_bogus_error_responses, value: "1" }
+      - { name: net.ipv4.conf.all.accept_source_route, value: "0" }
+      - { name: net.ipv4.conf.default.accept_source_route, value: "0" }
+      - { name: net.ipv6.conf.all.accept_redirects, value: "0" }
+      - { name: net.ipv6.conf.default.accept_redirects, value: "0" }
+      - { name: net.ipv6.conf.all.accept_source_route, value: "0" }
+      - { name: net.ipv6.conf.default.accept_source_route, value: "0" }
+
+  packages:
+    fail2ban: true
+    auditd: true
+    apparmor_utils: true
+    lynis: true
+    # OQ: legacy rootkit scanners — install-only; cron/collection outside role; see ExecPlan M7.
+    rkhunter: true
+    chkrootkit: true
+
+  cron_jobs: []
+  logrotate: []

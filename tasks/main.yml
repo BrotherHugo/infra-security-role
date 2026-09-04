@@ -1,0 +1,67 @@
+---
+- name: Configure host firewall
+  ansible.builtin.include_tasks: firewall.yml
+  when: harden.firewall.manage | bool
+  tags:
+    - harden
+    - harden-firewall
+
+- name: Configure admin user
+  ansible.builtin.include_tasks: admin_user.yml
+  when: harden.admin_user.enabled | bool
+  tags:
+    - harden
+    - harden-admin
+
+- name: Configure SSH hardening
+  ansible.builtin.include_tasks: ssh.yml
+  when: harden.ssh.enabled | bool
+  tags:
+    - harden
+    - harden-ssh
+
+- name: Install security packages and sysctl
+  ansible.builtin.include_tasks: packages.yml
+  tags:
+    - harden
+    - harden-packages
+
+- name: Configure sysctl
+  ansible.builtin.include_tasks: sysctl.yml
+  when: harden.sysctl.enabled | bool
+  tags:
+    - harden
+    - harden-sysctl
+
+- name: Configure auditd
+  ansible.builtin.include_tasks: auditd.yml
+  when: harden.auditd.enabled | bool
+  tags:
+    - harden
+    - harden-auditd
+
+- name: Configure fail2ban
+  ansible.builtin.include_tasks: fail2ban.yml
+  when: harden.fail2ban.enabled | bool
+  tags:
+    - harden
+    - harden-fail2ban
+
+- name: Configure automatic security updates
+  ansible.builtin.include_tasks: auto_updates.yml
+  when: harden.unattended_upgrades.enabled | bool
+  tags:
+    - harden
+    - harden-updates
+
+- name: Configure cron jobs
+  ansible.builtin.include_tasks: cron_jobs.yml
+  tags:
+    - harden
+    - harden-cron
+
+- name: Configure custom logrotate
+  ansible.builtin.include_tasks: logrotate.yml
+  tags:
+    - harden
+    - harden-logrotate
