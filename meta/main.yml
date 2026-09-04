@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: harden
+  namespace: brotherhugo
+  author: BrotherHugo
+  description: Ubuntu/Debian host hardening — SSH, UFW, fail2ban, auditd, sysctl, unattended-upgrades
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []
+
+collections:
+  - community.general
+  - ansible.posix

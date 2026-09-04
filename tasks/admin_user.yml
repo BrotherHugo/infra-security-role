@@ -1,0 +1,72 @@
+---
+- name: Resolve admin user password from environment when unset
+  ansible.builtin.set_fact:
+    _harden_admin_password: >-
+      {{
+        harden.admin_user.password
+        | default(lookup('ansible.builtin.env', 'HARDEN_ADMIN_PASSWORD', default=''), true)
+      }}
+  no_log: true
+
+- name: Create admin user
+  ansible.builtin.user:
+    name: "{{ harden.admin_user.name }}"
+    shell: /bin/bash
+    groups: "{{ harden.admin_user.groups | join(',') }}"
+    append: true
+    state: present
+    create_home: true
+    password: "{{ _harden_admin_password if _harden_admin_password | length > 0 else '!' }}"
+  when: _harden_admin_password | length > 0
+
+- name: Ensure admin user exists without password
+  ansible.builtin.user:
+    name: "{{ harden.admin_user.name }}"
+    shell: /bin/bash
+    groups: "{{ harden.admin_user.groups | join(',') }}"
+    append: true
+    state: present
+    create_home: true
+  when: _harden_admin_password | length == 0
+
+- name: Configure sudo for admin user
+  ansible.builtin.copy:
+    content: |
+      {{ harden.admin_user.name }} ALL=(ALL) {{ 'NOPASSWD:' if harden.admin_user.sudo_nopasswd else '' }}ALL
+    dest: "/etc/sudoers.d/{{ harden.admin_user.name }}"
+    mode: "0440"
+    validate: visudo -cf %s
+
+- name: Create SSH directory for admin user
+  ansible.builtin.file:
+    path: "/home/{{ harden.admin_user.name }}/.ssh"
+    state: directory
+    owner: "{{ harden.admin_user.name }}"
+    group: "{{ harden.admin_user.name }}"
+    mode: "0700"
+
+- name: Resolve admin authorized keys
+  ansible.builtin.set_fact:
+    _harden_admin_authorized_keys: >-
+      {{
+        harden.admin_user.authorized_keys
+        if harden.admin_user.authorized_keys | length > 0
+        else (
+          lookup('ansible.builtin.file', harden.admin_user.authorized_keys_file).splitlines()
+          if harden.admin_user.authorized_keys_file is not none
+          and harden.admin_user.authorized_keys_file | length > 0
+          else lookup('ansible.builtin.env', 'HARDEN_ADMIN_SSH_PUBLIC_KEY', default='').splitlines()
+        )
+      }}
+
+- name: Deploy admin authorized keys
+  ansible.builtin.copy:
+    content: |
+      {% for key in _harden_admin_authorized_keys %}
+      {{ key }}
+      {% endfor %}
+    dest: "/home/{{ harden.admin_user.name }}/.ssh/authorized_keys"
+    owner: "{{ harden.admin_user.name }}"
+    group: "{{ harden.admin_user.name }}"
+    mode: "0600"
+  when: _harden_admin_authorized_keys | length > 0

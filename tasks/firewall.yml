@@ -1,0 +1,36 @@
+---
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+
+- name: Reset UFW when forced
+  community.general.ufw:
+    state: reset
+  when: harden.firewall.force_reset | bool
+
+- name: Apply managed firewall rules
+  community.general.ufw:
+    rule: "{{ item.rule | default('allow') }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    from_ip: "{{ item.from_ip | default(omit) }}"
+    comment: "{{ item.comment | default(omit) }}"
+  loop: "{{ harden.firewall.rules + harden.firewall.extra_rules }}"
+  loop_control:
+    label: "{{ item.comment | default(item.port ~ '/' ~ item.proto) }}"
+
+- name: Set UFW default deny incoming
+  community.general.ufw:
+    direction: incoming
+    policy: "{{ harden.firewall.default_incoming }}"
+
+- name: Set UFW default allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    policy: "{{ harden.firewall.default_outgoing }}"
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled

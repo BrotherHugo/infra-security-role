@@ -1,0 +1,12 @@
+---
+- name: Manage cron jobs from harden.cron_jobs
+  ansible.builtin.cron:
+    name: "{{ item.name }}"
+    minute: "{{ item.minute }}"
+    hour: "{{ item.hour }}"
+    user: "{{ item.user | default('root') }}"
+    job: "{{ item.job }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ harden.cron_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"

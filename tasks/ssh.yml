@@ -1,0 +1,34 @@
+---
+- name: Deploy minimal sshd_config with drop-in include
+  ansible.builtin.template:
+    src: sshd_config_minimal.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0644"
+    validate: sshd -t -f %s
+  when: harden.ssh.manage_main_config | bool
+  notify: Restart ssh
+
+- name: Ensure sshd_config includes drop-in directory
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^Include /etc/ssh/sshd_config\.d/\*\.conf'
+    line: Include /etc/ssh/sshd_config.d/*.conf
+    insertafter: EOF
+    state: present
+  when: not (harden.ssh.manage_main_config | bool)
+  notify: Restart ssh
+
+- name: Deploy SSH hardening drop-in
+  ansible.builtin.template:
+    src: sshd_dropin.conf.j2
+    dest: "{{ harden.ssh.dropin_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart ssh
+
+- name: Validate sshd configuration
+  ansible.builtin.command: sshd -t
+  changed_when: false

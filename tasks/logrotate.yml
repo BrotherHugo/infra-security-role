@@ -1,0 +1,22 @@
+---
+- name: Configure custom logrotate snippets
+  ansible.builtin.copy:
+    content: |
+      {{ item.path }} {
+          daily
+          rotate 30
+          missingok
+          notifempty
+          compress
+          delaycompress
+          postrotate
+              # Reload any services if needed
+          endscript
+      }
+    dest: "/etc/logrotate.d/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ harden.logrotate }}"
+  loop_control:
+    label: "{{ item.name }}"
