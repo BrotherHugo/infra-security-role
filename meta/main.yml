@@ -5,7 +5,8 @@ galaxy_info:
   author: BrotherHugo
   description: >-
     Ubuntu/Debian host hardening — practical subset of CIS L1 (SSH, UFW, fail2ban,
-    auditd FIM, sysctl, unattended-upgrades). Not full CIS L1/L2 or a compliance profile.
+    auditd FIM, sysctl, unattended-upgrades, post-apply runtime smoke via harden-check).
+    Not full CIS L1/L2 or a compliance profile.
   license: MIT
   min_ansible_version: "2.14"
   platforms:

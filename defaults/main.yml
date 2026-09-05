@@ -137,4 +137,11 @@ _harden_defaults:
   cron_jobs: []
   logrotate: []
 
+  # Runtime smoke: dump sanitized expected.json + install /usr/local/sbin/harden-check.
+  # Snapshot never includes admin_user.password or authorized_keys.
+  verify:
+    enabled: true
+    run: true
+    rkhunter_update: false
+
 harden: {}

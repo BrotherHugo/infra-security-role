@@ -1,0 +1,51 @@
+---
+- name: Create harden state directory
+  ansible.builtin.file:
+    path: /var/lib/harden
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install harden-check script
+  ansible.builtin.copy:
+    src: harden_check.py
+    dest: /usr/local/sbin/harden-check
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write sanitized harden expected snapshot
+  ansible.builtin.template:
+    src: expected.json.j2
+    dest: /var/lib/harden/expected.json
+    owner: root
+    group: root
+    mode: "0640"
+    validate: >-
+      python3 -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' %s
+
+- name: Run harden runtime checks
+  ansible.builtin.command:
+    cmd: "/usr/local/sbin/harden-check{{ ' --rkhunter-update' if harden.verify.rkhunter_update | bool else '' }}"
+  register: _harden_check
+  changed_when: false
+  failed_when: false
+  when: harden.verify.run | bool
+
+- name: Show harden-check results
+  ansible.builtin.debug:
+    msg: "{{ _harden_check.stdout_lines }}"
+  when:
+    - harden.verify.run | bool
+    - _harden_check is defined
+    - _harden_check.stdout_lines is defined
+
+- name: Fail play when harden-check reported errors
+  ansible.builtin.assert:
+    that:
+      - _harden_check.rc == 0
+    fail_msg: "{{ _harden_check.stdout | default(_harden_check.stderr) }}"
+  when:
+    - harden.verify.run | bool
+    - _harden_check is defined

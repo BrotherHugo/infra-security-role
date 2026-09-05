@@ -70,3 +70,10 @@
   tags:
     - harden
     - harden-logrotate
+
+- name: Deploy runtime checks and expected snapshot
+  ansible.builtin.include_tasks: verify.yml
+  when: harden.verify.enabled | bool
+  tags:
+    - harden
+    - harden-verify
