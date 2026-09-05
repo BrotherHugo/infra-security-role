@@ -1,6 +1,6 @@
 [project]
 name = "brotherhugo-harden"
-version = "0.2.0"
+version = "1.0.0"
 description = "Ansible role for Ubuntu/Debian host hardening"
 
 [tool.semantic_release]

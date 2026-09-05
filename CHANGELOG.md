@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.0.0 (2026-09-05)
+
+### Features
+
+- BH-6: Follow-up for fixes improvements, bump major version
+  ([#4](https://github.com/BrotherHugo/infra-security-role/pull/4),
+  [`4268cbe`](https://github.com/BrotherHugo/infra-security-role/commit/4268cbe97e1ddd3ff67cf3b4829e61fec52b676b))
+
+
 ## v0.2.0 (2026-09-05)
 
 ### Features
