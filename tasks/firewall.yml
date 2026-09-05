@@ -31,6 +31,30 @@
     direction: outgoing
     policy: "{{ harden.firewall.default_outgoing }}"
 
+- name: Assert SSH port is explicitly allowed in firewall rules
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          harden.firewall.rules + harden.firewall.extra_rules
+          | selectattr('port', 'equalto', harden.ssh.port | string)
+          | selectattr('proto', 'equalto', 'tcp')
+          | rejectattr('rule', 'defined')
+          | list
+          + (
+            harden.firewall.rules + harden.firewall.extra_rules
+            | selectattr('port', 'equalto', harden.ssh.port | string)
+            | selectattr('proto', 'equalto', 'tcp')
+            | selectattr('rule', 'in', ['allow', 'limit'])
+            | list
+          )
+        ) | length > 0
+    fail_msg: >-
+      harden.firewall.manage is true but no allow/limit rule for SSH port
+      {{ harden.ssh.port }}/tcp in harden.firewall.rules or extra_rules.
+      Add an explicit rule with the same port as harden.ssh.port (see README).
+  when: harden.ssh.enabled | bool
+
 - name: Enable UFW
   community.general.ufw:
     state: enabled

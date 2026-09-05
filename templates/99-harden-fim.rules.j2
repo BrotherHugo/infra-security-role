@@ -4,3 +4,6 @@
 {% for item in harden.auditd.fim_paths + harden.auditd.fim_paths_extra %}
 -w {{ item.path }} -p {{ item.permissions }} -k {{ item.key }}
 {% endfor %}
+{% if harden.auditd.immutable | bool %}
+-e 2
+{% endif %}

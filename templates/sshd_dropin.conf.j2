@@ -15,7 +15,13 @@ GSSAPICleanupCredentials no
 
 LogLevel INFO
 SyslogFacility AUTH
-PrintLastLog no
+PrintLastLog {{ harden.ssh.print_last_log | ternary('yes', 'no') }}
+{% if harden.ssh.allow_users | length > 0 %}
+AllowUsers {{ harden.ssh.allow_users | join(' ') }}
+{% endif %}
+{% if harden.ssh.allow_groups | length > 0 %}
+AllowGroups {{ harden.ssh.allow_groups | join(' ') }}
+{% endif %}
 
 HostKey /etc/ssh/ssh_host_rsa_key
 HostKey /etc/ssh/ssh_host_ecdsa_key

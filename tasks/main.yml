@@ -1,4 +1,9 @@
 ---
+- name: Merge role defaults with inventory overlay
+  ansible.builtin.import_tasks: merge_defaults.yml
+  tags:
+    - always
+
 - name: Configure host firewall
   ansible.builtin.include_tasks: firewall.yml
   when: harden.firewall.manage | bool
