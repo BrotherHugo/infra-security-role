@@ -60,6 +60,8 @@ harden:
         enabled: true
 ```
 
+**rkhunter:** the role runs `rkhunter --update` after install. On fresh Debian/Ubuntu hosts the package sets `WEB_CMD=/bin/false`, so the update step may fail until a download client is configured. See [Troubleshooting: rkhunter --update](#rkhunter---update-fails-web_cmd).
+
 ---
 
 ## Parameter reference
@@ -85,7 +87,7 @@ Controls the `sshd` drop-in and the fail2ban `sshd` jail port. **The role does n
 | `client_alive_count_max` | int | `2` | `ClientAliveCountMax`. |
 | `login_grace_time` | int | `30` | `LoginGraceTime` (seconds). |
 | `use_dns` | bool | `false` | `UseDNS`. |
-| `dropin_path` | str | `/etc/ssh/sshd_config.d/99-harden.conf` | Path to the drop-in file with hardening settings. |
+| `dropin_path` | str | `/etc/ssh/sshd_config.d/00-harden.conf` | Path to the drop-in file with hardening settings. Loaded before cloud-init drop-ins (OpenSSH uses the first value per key). |
 | `manage_main_config` | bool | `true` | Replace `/etc/ssh/sshd_config` with a minimal template containing `Include /etc/ssh/sshd_config.d/*.conf`. If `false` — only adds the `Include` line if missing. |
 
 **Files on the server:** `harden.ssh.dropin_path`, when `manage_main_config: true` — `/etc/ssh/sshd_config`.
@@ -152,19 +154,19 @@ Do not use `{{ harden.ssh.port }}` inside `harden.firewall.rules` — it is part
 | `bantime` | int | `86400` | Ban duration (seconds). |
 | `findtime` | int | `600` | Attempt counting window (seconds). |
 
-Jail port comes from `harden.ssh.port`. Log: `/var/log/auth.log`.
+Jail port comes from `harden.ssh.port`. Auth events are read from the systemd journal (`ssh.service`).
 
 #### `harden.fail2ban.jails.nginx-limit-req`
 
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
-| `enabled` | bool | `false` | Jail for nginx rate-limit. When `false` — jail and filter are removed from disk. |
-| `logpath` | str | `/var/log/nginx/access.log` | Log to monitor. **Requires nginx installed and the log file present.** |
+| `enabled` | bool | `false` | Jail for nginx rate-limit. When `false` — jail file is removed from disk. |
+| `logpath` | str | `/var/log/nginx/error.log` | nginx error log to monitor. **Requires nginx installed and the log file present.** Uses the `nginx-limit-req` filter shipped with the fail2ban package. |
 | `maxretry` | int | `10` | Threshold before ban. |
 | `bantime` | int | `7200` | Ban duration (seconds). |
 | `findtime` | int | `600` | Counting window (seconds). |
 
-**Files:** `/etc/fail2ban/jail.local`, `/etc/fail2ban/jail.d/*.local`, `/etc/fail2ban/filter.d/nginx-limit-req.conf` (when jail is enabled).
+**Files:** `/etc/fail2ban/jail.local`, `/etc/fail2ban/jail.d/*.local`.
 
 After configuration, the `fail2ban` service is forced to `started` + `enabled`.
 
@@ -175,14 +177,14 @@ After configuration, the `fail2ban` service is forced to `started` + `enabled`.
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
 | `enabled` | bool | `true` | Install auditd, template `auditd.conf`, FIM rules, start service. |
-| `fim_paths` | list | see defaults | Base path list for file integrity monitoring (`-w` in `audit.rules`). |
+| `fim_paths` | list | see defaults | Base path list for file integrity monitoring (`-w` in `/etc/audit/rules.d/99-harden-fim.rules`). |
 | `fim_paths_extra` | list | `[]` | Additional paths (merged with `fim_paths`). |
 
 **Schema for `fim_paths` / `fim_paths_extra` items:**
 
 | Field | Description |
 |------|----------|
-| `path` | Absolute path to a file. |
+| `path` | Absolute path to a file or directory. |
 | `permissions` | Audit permissions, e.g. `wa` (write, attribute change). |
 | `key` | Event label (`ausearch -k <key>`). |
 
@@ -204,9 +206,9 @@ After configuration, the `fail2ban` service is forced to `started` + `enabled`.
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
 | `enabled` | bool | `true` | Apply parameters via `sysctl` and write to `/etc/sysctl.d/99-harden.conf`. |
-| `parameters` | list | see defaults | List of `{ name, value }` — IPv4/IPv6 network hardening parameters. |
+| `parameters` | list | see defaults | List of `{ name, value }` — network and kernel hardening parameters. |
 
-Full list of default `name` values — in `defaults/main.yml` (rp_filter, syncookies, redirects, martians, etc.).
+Full list of default `name` values — in `defaults/main.yml` (rp_filter, syncookies, redirects, martians, kptr_restrict, ptrace_scope, etc.).
 
 ---
 
@@ -220,10 +222,10 @@ Package installation (no cron/report collection setup for scanners).
 | `auditd` | bool | `true` | `auditd` |
 | `apparmor_utils` | bool | `true` | `apparmor-utils` |
 | `lynis` | bool | `true` | `lynis` |
-| `rkhunter` | bool | `true` | `rkhunter` (install only + `rkhunter --update` on first run) |
+| `rkhunter` | bool | `true` | `rkhunter` (install + `rkhunter --update` on each run). May require `WEB_CMD` configuration on first install — see [Troubleshooting](#rkhunter---update-fails-web_cmd). |
 | `chkrootkit` | bool | `true` | `chkrootkit` (install only) |
 
-The role **removes** legacy files `/etc/cron.daily/rkhunter`, `/etc/cron.daily/chkrootkit`, and related logrotate configs if they remain from older role versions.
+Scanner cron jobs and alerting are outside the role; package defaults for `rkhunter` and `chkrootkit` are left intact.
 
 ---
 
@@ -237,7 +239,7 @@ Bootstrap a local administrator. **Disabled** by default (`enabled: false`).
 | `name` | str | `admin` | Username. |
 | `groups` | list | `[sudo]` | Additional groups (besides primary). |
 | `sudo_nopasswd` | bool | `false` | `NOPASSWD` in sudoers. |
-| `password` | str / null | `null` | Hash or plaintext for the `user` module. Alternative: env `HARDEN_ADMIN_PASSWORD`. Without password — account with no password login (`!`). |
+| `password` | str / null | `null` | SHA-512 crypt hash for the `user` module (e.g. `mkpasswd --method=sha-512`). Alternative: env `HARDEN_ADMIN_PASSWORD`. Without password — account with no password login (`!`). Set only on create (`update_password: on_create`). |
 | `authorized_keys` | list | `[]` | List of public key strings. |
 | `authorized_keys_file` | str / null | `null` | Path to keys file on control node. Lower priority than `authorized_keys`. |
 
@@ -328,10 +330,50 @@ harden:
 
 ---
 
+## Troubleshooting
+
+### rkhunter --update fails (WEB_CMD)
+
+**Symptom:** `rkhunter --update` fails during the playbook (tag `harden-packages`) or when run manually. Logs mention `WEB_CMD` or `/bin/false`.
+
+**Cause:** The `rkhunter` package ships with `WEB_CMD=/bin/false` so the scanner does not download files unless you explicitly allow it. The role runs `rkhunter --update` to refresh the malware signature database, which requires a working HTTP client.
+
+**Fix (try in order):**
+
+1. **curl** — often enough on minimal images:
+
+   ```bash
+   sudo sed -i 's|^WEB_CMD=.*|WEB_CMD=/usr/bin/curl|' /etc/rkhunter.conf
+   sudo rkhunter --update
+   ```
+
+2. **wget + mirror settings** — if curl still fails (proxy, TLS, mirror list):
+
+   ```bash
+   sudo tee /etc/rkhunter.conf.d/99-download.local <<'EOF'
+   WEB_CMD=wget
+   UPDATE_MIRRORS=1
+   MIRRORS_MODE=0
+   EOF
+   sudo rkhunter --update
+   ```
+
+   `99-download.local` overrides the main config. `UPDATE_MIRRORS=1` refreshes the mirror list; `MIRRORS_MODE=0` uses the default mirror selection.
+
+**After a successful update:** re-run the playbook, or only the packages block:
+
+```bash
+ansible-playbook site.yml --tags harden-packages
+```
+
+**Note:** This only enables signature downloads for `rkhunter --update`. Scheduled scans and alerting remain outside this role (see [Limitations and notes](#limitations-and-notes)).
+
+---
+
 ## Limitations and notes
 
 - The role targets **Debian/Ubuntu** (`apt`). Other distributions are not supported.
 - Do not enable fail2ban jail `nginx-limit-req` on hosts without nginx — fail2ban will not start.
-- rkhunter/chkrootkit: install-only; collection and alerts are outside the role.
+- rkhunter/chkrootkit: the role installs both and runs `rkhunter --update`; scheduled scans and alerts are outside the role.
 - Changing the SSH port does not update UFW rules automatically, be sure to sync them in your config.
 - `harden.firewall.force_reset: true` — use only deliberately, with a backup of rules.

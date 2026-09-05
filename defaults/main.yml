@@ -18,7 +18,7 @@ harden:
     client_alive_count_max: 2
     login_grace_time: 30
     use_dns: false
-    dropin_path: /etc/ssh/sshd_config.d/99-harden.conf
+    dropin_path: /etc/ssh/sshd_config.d/00-harden.conf
     manage_main_config: true
 
   admin_user:
@@ -49,7 +49,7 @@ harden:
         findtime: 600
       nginx-limit-req:
         enabled: false
-        logpath: /var/log/nginx/access.log
+        logpath: /var/log/nginx/error.log
         maxretry: 10
         bantime: 7200
         findtime: 600
@@ -58,11 +58,14 @@ harden:
     enabled: true
     fim_paths:
       - { path: /etc/ssh/sshd_config, permissions: wa, key: sshd_config }
+      - { path: /etc/ssh/sshd_config.d, permissions: wa, key: sshd_config_d }
       - { path: /etc/passwd, permissions: wa, key: passwd }
       - { path: /etc/shadow, permissions: wa, key: shadow }
       - { path: /etc/sudoers, permissions: wa, key: sudoers }
-      - { path: /etc/fail2ban/jail.local, permissions: wa, key: fail2ban_config }
+      - { path: /etc/sudoers.d, permissions: wa, key: sudoers_d }
+      - { path: /etc/fail2ban, permissions: wa, key: fail2ban_config }
       - { path: /etc/audit/auditd.conf, permissions: wa, key: auditd_config }
+      - { path: /etc/audit/rules.d, permissions: wa, key: audit_rules }
       - { path: /etc/ufw/user.rules, permissions: wa, key: ufw_config }
     fim_paths_extra: []
 
@@ -98,6 +101,23 @@ harden:
       - { name: net.ipv6.conf.default.accept_redirects, value: "0" }
       - { name: net.ipv6.conf.all.accept_source_route, value: "0" }
       - { name: net.ipv6.conf.default.accept_source_route, value: "0" }
+      - { name: net.ipv6.conf.all.accept_ra, value: "0" }
+      - { name: net.ipv6.conf.default.accept_ra, value: "0" }
+      - { name: kernel.kptr_restrict, value: "2" }
+      - { name: kernel.dmesg_restrict, value: "1" }
+      - { name: kernel.yama.ptrace_scope, value: "1" }
+      - { name: kernel.unprivileged_bpf_disabled, value: "1" }
+      - { name: net.core.bpf_jit_harden, value: "2" }
+      - { name: kernel.randomize_va_space, value: "2" }
+      - { name: kernel.core_uses_pid, value: "1" }
+      - { name: kernel.sysrq, value: "0" }
+      - { name: kernel.perf_event_paranoid, value: "2" }
+      - { name: fs.suid_dumpable, value: "0" }
+      - { name: fs.protected_symlinks, value: "1" }
+      - { name: fs.protected_hardlinks, value: "1" }
+      - { name: fs.protected_fifos, value: "2" }
+      - { name: fs.protected_regular, value: "2" }
+      - { name: dev.tty.ldisc_autoload, value: "0" }
 
   packages:
     fail2ban: true

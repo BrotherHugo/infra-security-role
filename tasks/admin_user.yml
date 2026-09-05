@@ -16,7 +16,9 @@
     append: true
     state: present
     create_home: true
-    password: "{{ _harden_admin_password if _harden_admin_password | length > 0 else '!' }}"
+    password: "{{ _harden_admin_password }}"
+    update_password: on_create
+  no_log: true
   when: _harden_admin_password | length > 0
 
 - name: Ensure admin user exists without password

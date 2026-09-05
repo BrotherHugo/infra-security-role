@@ -18,29 +18,9 @@
     update_cache: true
   when: _harden_packages | length > 0
 
-- name: Initialize rkhunter database
+- name: Update rkhunter database
   ansible.builtin.command: rkhunter --update
-  args:
-    creates: /var/lib/rkhunter/db/rkhunter.dat
+  register: _harden_rkhunter_update
   when: harden.packages.rkhunter | bool
-  changed_when: false
-
-- name: Remove legacy rkhunter daily cron from role
-  ansible.builtin.file:
-    path: /etc/cron.daily/rkhunter
-    state: absent
-
-- name: Remove legacy chkrootkit daily cron from role
-  ansible.builtin.file:
-    path: /etc/cron.daily/chkrootkit
-    state: absent
-
-- name: Remove legacy rkhunter logrotate from role
-  ansible.builtin.file:
-    path: /etc/logrotate.d/rkhunter
-    state: absent
-
-- name: Remove legacy chkrootkit logrotate from role
-  ansible.builtin.file:
-    path: /etc/logrotate.d/chkrootkit
-    state: absent
+  changed_when: _harden_rkhunter_update.rc == 0
+  failed_when: _harden_rkhunter_update.rc >= 2

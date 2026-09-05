@@ -15,9 +15,16 @@
     path: /etc/ssh/sshd_config
     regexp: '^Include /etc/ssh/sshd_config\.d/\*\.conf'
     line: Include /etc/ssh/sshd_config.d/*.conf
-    insertafter: EOF
+    insertbefore: BOF
     state: present
   when: not (harden.ssh.manage_main_config | bool)
+  notify: Restart ssh
+
+- name: Remove legacy SSH drop-in after first-match rename
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/99-harden.conf
+    state: absent
+  when: harden.ssh.dropin_path != '/etc/ssh/sshd_config.d/99-harden.conf'
   notify: Restart ssh
 
 - name: Deploy SSH hardening drop-in
@@ -26,7 +33,8 @@
     dest: "{{ harden.ssh.dropin_path }}"
     owner: root
     group: root
-    mode: "0644"
+    mode: "0600"
+    validate: sshd -t -f %s
   notify: Restart ssh
 
 - name: Validate sshd configuration

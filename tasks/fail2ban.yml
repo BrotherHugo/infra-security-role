@@ -42,23 +42,6 @@
   when: not (harden.fail2ban.jails['nginx-limit-req'].enabled | bool)
   notify: Restart fail2ban
 
-- name: Configure fail2ban nginx-limit-req filter
-  ansible.builtin.template:
-    src: nginx-limit-req.conf.j2
-    dest: /etc/fail2ban/filter.d/nginx-limit-req.conf
-    owner: root
-    group: root
-    mode: "0644"
-  when: harden.fail2ban.jails['nginx-limit-req'].enabled | bool
-  notify: Restart fail2ban
-
-- name: Remove fail2ban nginx-limit-req filter when jail disabled
-  ansible.builtin.file:
-    path: /etc/fail2ban/filter.d/nginx-limit-req.conf
-    state: absent
-  when: not (harden.fail2ban.jails['nginx-limit-req'].enabled | bool)
-  notify: Restart fail2ban
-
 - name: Ensure fail2ban is running
   ansible.builtin.service:
     name: fail2ban

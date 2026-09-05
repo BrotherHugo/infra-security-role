@@ -15,15 +15,10 @@
     enabled: true
 
 - name: Configure FIM rules for critical files
-  ansible.builtin.lineinfile:
-    path: /etc/audit/rules.d/audit.rules
-    line: "-w {{ item.path }} -p {{ item.permissions }} -k {{ item.key }}"
-    state: present
-    create: true
-    mode: "0640"
+  ansible.builtin.template:
+    src: 99-harden-fim.rules.j2
+    dest: /etc/audit/rules.d/99-harden-fim.rules
     owner: root
     group: root
-  loop: "{{ harden.auditd.fim_paths + harden.auditd.fim_paths_extra }}"
-  loop_control:
-    label: "{{ item.key }}"
-  notify: Restart auditd
+    mode: "0640"
+  notify: Load audit rules

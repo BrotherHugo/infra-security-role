@@ -2,7 +2,8 @@
 enabled = true
 port = {{ harden.ssh.port }}
 filter = sshd
-logpath = /var/log/auth.log
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
 maxretry = {{ harden.fail2ban.jails.sshd.maxretry }}
 bantime = {{ harden.fail2ban.jails.sshd.bantime }}
 findtime = {{ harden.fail2ban.jails.sshd.findtime }}
