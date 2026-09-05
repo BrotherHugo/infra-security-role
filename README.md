@@ -2,7 +2,19 @@
 
 Universal Ansible role for hardening Ubuntu/Debian hosts.
 
-All settings are defined under the `harden:` root in `group_vars` / `host_vars` (or role `defaults`). Secrets — via vault, `--extra-vars`, or environment variables (see `admin_user`).
+## Security posture
+
+This role targets a **production-friendly CIS Level 1 baseline**, not Level 2. It is **not** a compliance certification — validate deployed hosts with [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks) or Lynis if you need a formal gap analysis.
+
+| Scope | What the role covers |
+|-------|----------------------|
+| **In scope** | SSH hardening (key-only, modern crypto), fail2ban, optional UFW, auditd file-integrity monitoring, kernel/network sysctl, unattended security upgrades |
+| **Partially in scope** | Some sysctl settings and optional auditd immutable rules (`-e 2`) go beyond minimal L1, without full syscall auditing or system-wide permission hardening |
+| **Out of scope** | CIS L2 controls (comprehensive audit policy, AIDE, AppArmor enforce, account lockout/PAM policies, remote logging, mount options). Operational extras: disk-usage alerts, nginx FIM, scanner cron jobs — configure via inventory or sibling roles |
+
+Firewall rules, SSH allowlists, `fim_paths_extra`, and disk alerts remain the consumer's responsibility.
+
+Override any setting under `harden:` in `group_vars` / `host_vars`; the role merges your overlay onto `_harden_defaults` from `defaults/main.yml` (recursive `combine`). Secrets — via vault, `--extra-vars`, or environment variables (see `admin_user`).
 
 **Platforms:** Ubuntu 22.04+, Debian 12+ (see `meta/main.yml`).
 
@@ -31,7 +43,9 @@ roles:
   - brotherhugo.harden
 ```
 
-If `harden:` is split across `group_vars` and `host_vars` (overlay inventory), the consumer's `ansible.cfg` must set `hash_behaviour = merge`. Without merge, the `harden` key in `host_vars` replaces the entire dictionary from `group_vars`.
+Inventory only needs the keys you override — for example `harden.ssh.port` without repeating sysctl or auditd defaults. Lists such as `fim_paths` or `firewall.rules` are replaced wholesale when set in inventory; use `fim_paths_extra` / `firewall.extra_rules` to append host-specific entries.
+
+If the same `harden:` key appears in both `group_vars` and `host_vars`, Ansible still merges host over group before the role runs; nested dicts under `harden` are then combined again with role defaults.
 
 ---
 
@@ -66,7 +80,7 @@ harden:
 
 ## Parameter reference
 
-Below is the full role contract. Default values are in `defaults/main.yml`.
+Below is the full role contract. Default values are in `_harden_defaults` inside `defaults/main.yml`.
 
 ### `harden.ssh`
 
@@ -87,6 +101,9 @@ Controls the `sshd` drop-in and the fail2ban `sshd` jail port. **The role does n
 | `client_alive_count_max` | int | `2` | `ClientAliveCountMax`. |
 | `login_grace_time` | int | `30` | `LoginGraceTime` (seconds). |
 | `use_dns` | bool | `false` | `UseDNS`. |
+| `print_last_log` | bool | `true` | `PrintLastLog` — show time and source of last login. |
+| `allow_users` | list | `[]` | `AllowUsers` when non-empty. Empty — directive omitted (any local user with a valid key may connect). |
+| `allow_groups` | list | `[]` | `AllowGroups` when non-empty. Empty — directive omitted. |
 | `dropin_path` | str | `/etc/ssh/sshd_config.d/00-harden.conf` | Path to the drop-in file with hardening settings. Loaded before cloud-init drop-ins (OpenSSH uses the first value per key). |
 | `manage_main_config` | bool | `true` | Replace `/etc/ssh/sshd_config` with a minimal template containing `Include /etc/ssh/sshd_config.d/*.conf`. If `false` — only adds the `Include` line if missing. |
 
@@ -117,9 +134,11 @@ UFW: default-deny incoming, rules from inventory. Runs only when `manage: true`.
 | `from_ip` | no | Restrict source (e.g. `"203.0.113.10"`). |
 | `comment` | no | UFW comment. |
 
-Apply order: install UFW → (optional reset) → loop over `rules + extra_rules` → default policies → `ufw enable`.
+Apply order: install UFW → (optional reset) → loop over `rules + extra_rules` → default policies → assert SSH rule present → `ufw enable`.
 
-**SSH in UFW** — only an explicit rule with the same port number as `harden.ssh.port`:
+When `manage: true` and `harden.ssh.enabled: true`, the role **fails** unless `rules` or `extra_rules` contains an explicit `allow` or `limit` rule for `harden.ssh.port`/tcp. There is no implicit SSH rule — the port must appear literally in inventory.
+
+**SSH in UFW** — explicit rule with the same port number as `harden.ssh.port`:
 
 ```yaml
 harden:
@@ -133,9 +152,7 @@ harden:
         comment: SSH
 ```
 
-Do not use `{{ harden.ssh.port }}` inside `harden.firewall.rules` — it is part of the `harden` dict and causes recursive templating in Ansible.
-
-**Inventory merge:** with `hash_behaviour = merge` in `ansible.cfg`, `host_vars` with `harden.ssh` extend `group_vars` (`firewall`, `fail2ban`, etc.) without replacing the entire `harden`.
+Do not use `{{ harden.ssh.port }}` inside `harden.firewall.rules` — it is part of the `harden` dict and causes recursive templating in Ansible. Write the port as a string literal in both `harden.ssh.port` and the firewall rule.
 
 ---
 
@@ -144,6 +161,7 @@ Do not use `{{ harden.ssh.port }}` inside `harden.firewall.rules` — it is part
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
 | `enabled` | bool | `true` | Install (via `packages`) and configure fail2ban. |
+| `banaction` | str / null | `null` | fail2ban `banaction`. When `null`: `ufw` if `harden.firewall.manage`, otherwise `nftables-multiport`. |
 
 #### `harden.fail2ban.jails.sshd`
 
@@ -177,6 +195,7 @@ After configuration, the `fail2ban` service is forced to `started` + `enabled`.
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
 | `enabled` | bool | `true` | Install auditd, template `auditd.conf`, FIM rules, start service. |
+| `immutable` | bool | `false` | Append `-e 2` to audit rules (kernel locks the rule set until reboot). When enabled, rule changes require a reboot; `augenrules --load` is skipped while rules are already locked. |
 | `fim_paths` | list | see defaults | Base path list for file integrity monitoring (`-w` in `/etc/audit/rules.d/99-harden-fim.rules`). |
 | `fim_paths_extra` | list | `[]` | Additional paths (merged with `fim_paths`). |
 
@@ -205,10 +224,10 @@ After configuration, the `fail2ban` service is forced to `started` + `enabled`.
 
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
-| `enabled` | bool | `true` | Apply parameters via `sysctl` and write to `/etc/sysctl.d/99-harden.conf`. |
+| `enabled` | bool | `true` | Apply parameters via `ansible.posix.sysctl` into `/etc/sysctl.d/99-harden.conf` only (`sysctl_file`). |
 | `parameters` | list | see defaults | List of `{ name, value }` — network and kernel hardening parameters. |
 
-Full list of default `name` values — in `defaults/main.yml` (rp_filter, syncookies, redirects, martians, kptr_restrict, ptrace_scope, etc.).
+Full list of default `name` values — in `_harden_defaults` inside `defaults/main.yml` (rp_filter, syncookies, redirects, martians, kptr_restrict, ptrace_scope, etc.).
 
 ---
 
@@ -317,7 +336,21 @@ harden:
         comment: SSH
 ```
 
-`harden.ssh.port` → sshd + fail2ban. UFW — the same port explicitly in `firewall.rules` (set both fields to the same value).
+`harden.ssh.port` → sshd + fail2ban. UFW — the same port explicitly in `firewall.rules` (set both fields to the same value). Set `ansible_port` to match.
+
+### SSH access control
+
+Restrict who may log in (optional):
+
+```yaml
+harden:
+  ssh:
+    allow_users: [deploy]
+    # or
+    allow_groups: [sudo]
+```
+
+Empty lists (default) omit `AllowUsers` / `AllowGroups` so cloud-init users such as `ubuntu` remain valid. Set explicitly in production.
 
 ---
 
@@ -368,12 +401,23 @@ ansible-playbook site.yml --tags harden-packages
 
 **Note:** This only enables signature downloads for `rkhunter --update`. Scheduled scans and alerting remain outside this role (see [Limitations and notes](#limitations-and-notes)).
 
+### auditd immutable rules (`-e 2`)
+
+**Symptom:** After enabling `harden.auditd.immutable: true`, a later playbook run does not reload FIM rules; handler logs show `augenrules --load` skipped.
+
+**Cause:** `-e 2` locks the active audit rule set in the kernel until reboot. While locked, live rule changes are rejected — by design.
+
+**Fix:** Reboot the host after changing FIM paths or toggling `immutable`. For routine deploys on immutable hosts, expect no rule reload until reboot.
+
 ---
 
 ## Limitations and notes
 
+- CIS L1/L2 positioning and coverage gaps — see [Security posture](#security-posture).
 - The role targets **Debian/Ubuntu** (`apt`). Other distributions are not supported.
 - Do not enable fail2ban jail `nginx-limit-req` on hosts without nginx — fail2ban will not start.
+- fail2ban `banaction` defaults to `nftables-multiport` when UFW is not managed (`harden.firewall.manage: false`). Set `harden.fail2ban.banaction` to override.
 - rkhunter/chkrootkit: the role installs both and runs `rkhunter --update`; scheduled scans and alerts are outside the role.
-- Changing the SSH port does not update UFW rules automatically, be sure to sync them in your config.
+- Changing the SSH port does not update UFW rules automatically — add an explicit firewall rule with the same port literal.
 - `harden.firewall.force_reset: true` — use only deliberately, with a backup of rules.
+- `harden.auditd.immutable: true` — rule changes need a reboot; see [auditd immutable rules](#auditd-immutable-rules--e-2).

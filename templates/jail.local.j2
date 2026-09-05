@@ -2,7 +2,7 @@
 bantime = 86400
 findtime = 600
 maxretry = 3
-banaction = ufw
+banaction = {{ harden.fail2ban.banaction | default(harden.firewall.manage | ternary('ufw', 'nftables-multiport')) }}
 backend = auto
 loglevel = ERROR
 logtarget = SYSLOG

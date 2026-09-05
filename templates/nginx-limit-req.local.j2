@@ -1,7 +1,6 @@
 [nginx-limit-req]
 enabled = true
 filter = nginx-limit-req
-action = ufw
 logpath = {{ harden.fail2ban.jails['nginx-limit-req'].logpath }}
 findtime = {{ harden.fail2ban.jails['nginx-limit-req'].findtime }}
 bantime = {{ harden.fail2ban.jails['nginx-limit-req'].bantime }}

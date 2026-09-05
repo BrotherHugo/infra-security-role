@@ -1,0 +1,6 @@
+---
+- name: Merge harden overlay onto role defaults
+  ansible.builtin.set_fact:
+    harden: "{{ _harden_defaults | combine(harden | default({}), recursive=True) }}"
+  tags:
+    - always

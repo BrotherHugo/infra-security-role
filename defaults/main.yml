@@ -1,8 +1,8 @@
 ---
 # Universal Ansible role for hardening Ubuntu/Debian hosts.
-# All settings live under harden:; override in group_vars / host_vars.
+# Full default tree: _harden_defaults. Override any key under harden: in group_vars / host_vars.
 
-harden:
+_harden_defaults:
   ssh:
     enabled: true
     # sshd port and fail2ban sshd jail. UFW rule — explicitly in harden.firewall.rules.
@@ -18,6 +18,9 @@ harden:
     client_alive_count_max: 2
     login_grace_time: 30
     use_dns: false
+    print_last_log: true
+    allow_users: []
+    allow_groups: []
     dropin_path: /etc/ssh/sshd_config.d/00-harden.conf
     manage_main_config: true
 
@@ -41,6 +44,7 @@ harden:
 
   fail2ban:
     enabled: true
+    banaction: null
     jails:
       sshd:
         enabled: true
@@ -56,6 +60,7 @@ harden:
 
   auditd:
     enabled: true
+    immutable: false
     fim_paths:
       - { path: /etc/ssh/sshd_config, permissions: wa, key: sshd_config }
       - { path: /etc/ssh/sshd_config.d, permissions: wa, key: sshd_config_d }
@@ -130,3 +135,5 @@ harden:
 
   cron_jobs: []
   logrotate: []
+
+harden: {}

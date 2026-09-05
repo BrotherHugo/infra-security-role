@@ -5,14 +5,8 @@
     value: "{{ item.value }}"
     state: present
     sysctl_set: true
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-harden.conf
   loop: "{{ harden.sysctl.parameters }}"
   loop_control:
     label: "{{ item.name }}"
-
-- name: Persist sysctl parameters
-  ansible.builtin.template:
-    src: sysctl.conf.j2
-    dest: /etc/sysctl.d/99-harden.conf
-    owner: root
-    group: root
-    mode: "0644"
