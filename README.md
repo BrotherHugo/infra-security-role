@@ -2,15 +2,18 @@
 
 Universal Ansible role for hardening Ubuntu/Debian hosts.
 
+> **Monitoring:** This role **configures** security tools on the host — fail2ban, auditd, rkhunter, chkrootkit, Lynis, unattended-upgrades, and similar. It does **not** run ongoing monitoring, aggregate their output, or send alerts. For that, use [**Infra Security Monitor (ISM)**](https://github.com/BrotherHugo/infra-security-monitor) alongside this role: `ismd` collects summaries from the tools above and delivers a plain-text report to a file, email, or Telegram. Optional AI analysis can be appended to the full report.
+
 ## Security posture
 
-This role targets a **production-friendly CIS Level 1 baseline**, not Level 2. It is **not** a compliance certification — validate deployed hosts with [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks) or Lynis if you need a formal gap analysis.
+This role implements a **practical subset of [CIS Level 1](https://www.cisecurity.org/cis-benchmarks)** controls for production Ubuntu/Debian hosts — not the full L1 profile and not Level 2. It is **not** a compliance certification; run CIS-CAT, Lynis, or a manual benchmark audit if you need proof of coverage.
 
 | Scope | What the role covers |
 |-------|----------------------|
-| **In scope** | SSH hardening (key-only, modern crypto), fail2ban, optional UFW, auditd file-integrity monitoring, kernel/network sysctl, unattended security upgrades |
-| **Partially in scope** | Some sysctl settings and optional auditd immutable rules (`-e 2`) go beyond minimal L1, without full syscall auditing or system-wide permission hardening |
-| **Out of scope** | CIS L2 controls (comprehensive audit policy, AIDE, AppArmor enforce, account lockout/PAM policies, remote logging, mount options). Operational extras: disk-usage alerts, nginx FIM, scanner cron jobs — configure via inventory or sibling roles |
+| **In subset** | SSH hardening (key-only, modern crypto), fail2ban, optional UFW, auditd FIM on selected paths, kernel/network sysctl, unattended security upgrades, post-apply runtime smoke (`harden-check`) |
+| **Beyond subset** | Some sysctl settings and optional auditd immutable rules (`-e 2`) add hardening without full syscall auditing or system-wide permission checks |
+| **CIS L1 not in subset** | AIDE, mount options (`nodev`/`nosuid`/`noexec`), login banners, unused filesystem modules, file-permission audits, PAM lockout, chrony/NTP, AppArmor service enable (only `apparmor-utils` install), `net.ipv4.ip_forward=0` (omitted — breaks Docker bridge/NAT). Firewall rules, SSH allowlists, `fim_paths_extra`, disk alerts — consumer responsibility |
+| **CIS L2** | Comprehensive audit policy, AppArmor enforce-all-profiles, remote logging, full account-lockout policies — out of scope |
 
 Firewall rules, SSH allowlists, `fim_paths_extra`, and disk alerts remain the consumer's responsibility.
 
@@ -51,12 +54,17 @@ If the same `harden:` key appears in both `group_vars` and `host_vars`, Ansible 
 
 ## Quick start
 
+Typical target: bare-metal **web host** — Docker workloads, **nginx** reverse proxy, UFW, key-only SSH. Copy the inventory overlay below and adjust `allow_groups` (or `allow_users`) and firewall port literals to match your admin account and `harden.ssh.port`.
+
 ```yaml
 # inventory/group_vars/webservers.yaml
 harden:
   ssh:
     port: 22
     permit_root_login: false
+    password_authentication: false
+    allow_groups: [sudo]
+
   firewall:
     manage: true
     rules:
@@ -65,16 +73,77 @@ harden:
         proto: tcp
         comment: SSH
       - rule: allow
+        port: "80"
+        proto: tcp
+        comment: HTTP
+      - rule: allow
         port: "443"
         proto: tcp
         comment: HTTPS
+
   fail2ban:
+    enabled: true
+    banaction: ufw
     jails:
+      sshd:
+        enabled: true
       nginx-limit-req:
         enabled: true
+
+  auditd:
+    enabled: true
+    fim_paths_extra:
+      - { path: /etc/nginx, permissions: wa, key: nginx_config }
+
+  unattended_upgrades:
+    enabled: true
+    automatic_reboot: true
+    automatic_reboot_time: "02:00"
+    security_only: true
+
+  packages:
+    rkhunter: false
 ```
 
-**rkhunter:** the role runs `rkhunter --update` after install. On fresh Debian/Ubuntu hosts the package sets `WEB_CMD=/bin/false`, so the update step may fail until a download client is configured. See [Troubleshooting: rkhunter --update](#rkhunter---update-fails-web_cmd).
+`banaction: ufw` matches `firewall.manage: true` — do not leave it empty/null or fail2ban fails to start (see [fail2ban skips jail sshd](#fail2ban-skips-jail-sshd-invalid-action-definition-port22)). When UFW is off, use `nftables-multiport` instead.
+
+**Playbook order:** run your **nginx** (or reverse-proxy) role **before** `brotherhugo.harden` when `nginx-limit-req` is enabled — fail2ban needs `/var/log/nginx/error.log` on disk. Without nginx on the host, set `nginx-limit-req.enabled: false`.
+
+```yaml
+# site.yml
+- hosts: webservers
+  roles:
+    - nginx              # or any role that installs nginx and creates error.log
+    - brotherhugo.harden
+```
+
+**Before the first run:** your Ansible SSH user must be in `sudo` (or listed in `allow_users`) and must already use key-based login — the role disables password authentication.
+
+**rkhunter:** disabled above so the first playbook run does not fail on `WEB_CMD=/bin/false`. After configuring a download client, set `harden.packages.rkhunter: true` — see [Troubleshooting: rkhunter --update](#rkhunter---update-fails-web_cmd).
+
+**Changing the SSH port:** UFW applies immediately; `sshd` restarts only at the end of the play (handler). If inventory allows only the new port, the play can lock you out while `sshd` still listens on the old one. Keep an allow rule for the **current** listening port until after a successful restart, then drop it on a later run. See [Custom SSH port](#custom-ssh-port).
+
+**After apply:** the role installs `/usr/local/sbin/harden-check` and writes a sanitized snapshot to `/var/lib/harden/expected.json` (no `admin_user` secrets). With default `harden.verify.run: true`, the play fails if smoke checks fail — catches broken fail2ban `banaction`, sshd jail journal match, or a missing nginx `error.log` path after inventory changes.
+
+```bash
+ansible-playbook site.yml                      # harden-check at end of play
+ansible-playbook site.yml --tags harden-verify # refresh snapshot + run checks only
+sudo harden-check                              # on the host, anytime
+sudo harden-check --rkhunter-update            # also rkhunter --update (network)
+```
+
+Partial tags such as `harden-fail2ban` skip verification unless you also pass `harden` or `harden-verify`. Set `harden.verify.run: false` to install the script without failing the play. Optional daily cron via `harden.cron_jobs`:
+
+```yaml
+harden:
+  cron_jobs:
+    - name: harden-check
+      minute: "17"
+      hour: "4"
+      job: /usr/local/sbin/harden-check
+```
+
+Parameter defaults: [`harden.verify`](#hardenverify).
 
 ---
 
@@ -161,7 +230,7 @@ Do not use `{{ harden.ssh.port }}` inside `harden.firewall.rules` — it is part
 | Parameter | Type | Default | Description |
 |----------|-----|--------------|----------|
 | `enabled` | bool | `true` | Install (via `packages`) and configure fail2ban. |
-| `banaction` | str / null | `null` | fail2ban `banaction`. When `null`: `ufw` if `harden.firewall.manage`, otherwise `nftables-multiport`. |
+| `banaction` | str / null | `null` | fail2ban `banaction`. When `null` or empty: `ufw` if `harden.firewall.manage`, otherwise `nftables-multiport`. Must not stay empty — fail2ban then parses the action as `[port="22",` and skips the jail. |
 
 #### `harden.fail2ban.jails.sshd`
 
@@ -172,7 +241,7 @@ Do not use `{{ harden.ssh.port }}` inside `harden.firewall.rules` — it is part
 | `bantime` | int | `86400` | Ban duration (seconds). |
 | `findtime` | int | `600` | Attempt counting window (seconds). |
 
-Jail port comes from `harden.ssh.port`. Auth events are read from the systemd journal (`ssh.service`).
+Jail port comes from `harden.ssh.port`. Auth events are read from the systemd journal (`_SYSTEMD_UNIT=ssh.service` only). The match does **not** filter on `_COMM=sshd` — OpenSSH 9.8+ logs as `sshd-session` (Debian 13, newer Ubuntu), and that filter would miss bans.
 
 #### `harden.fail2ban.jails.nginx-limit-req`
 
@@ -184,9 +253,9 @@ Jail port comes from `harden.ssh.port`. Auth events are read from the systemd jo
 | `bantime` | int | `7200` | Ban duration (seconds). |
 | `findtime` | int | `600` | Counting window (seconds). |
 
-**Files:** `/etc/fail2ban/jail.local`, `/etc/fail2ban/jail.d/*.local`.
+**Files:** `/etc/fail2ban/jail.local` (`loglevel = INFO` so Ban/Unban show in syslog), `/etc/fail2ban/jail.d/*.local`.
 
-After configuration, the `fail2ban` service is forced to `started` + `enabled`.
+After configuration, the `fail2ban` service is forced to `started` + `enabled`. Post-apply validation: [`harden-check`](#quick-start) (default at end of play).
 
 ---
 
@@ -229,6 +298,8 @@ After configuration, the `fail2ban` service is forced to `started` + `enabled`.
 
 Full list of default `name` values — in `_harden_defaults` inside `defaults/main.yml` (rp_filter, syncookies, redirects, martians, kptr_restrict, ptrace_scope, etc.).
 
+The role does **not** set `net.ipv4.ip_forward=0`. Docker bridge/NAT needs IPv4 forwarding; forcing 0 breaks container networking. CIS L1 wants forwarding off on non-router hosts — override `harden.sysctl.parameters` only on hosts without Docker (or other NAT/bridges).
+
 ---
 
 ### `harden.packages`
@@ -241,7 +312,7 @@ Package installation (no cron/report collection setup for scanners).
 | `auditd` | bool | `true` | `auditd` |
 | `apparmor_utils` | bool | `true` | `apparmor-utils` |
 | `lynis` | bool | `true` | `lynis` |
-| `rkhunter` | bool | `true` | `rkhunter` (install + `rkhunter --update` on each run). May require `WEB_CMD` configuration on first install — see [Troubleshooting](#rkhunter---update-fails-web_cmd). |
+| `rkhunter` | bool | `true` | `rkhunter` (install + `rkhunter --update` on each run). May require `WEB_CMD` configuration on first install — see [Troubleshooting](#rkhunter---update-fails-web_cmd). When enabled, `harden-check` verifies `WEB_CMD` is not `/bin/false`. |
 | `chkrootkit` | bool | `true` | `chkrootkit` (install only) |
 
 Scanner cron jobs and alerting are outside the role; package defaults for `rkhunter` and `chkrootkit` are left intact.
@@ -298,6 +369,18 @@ Rotation: daily, 30 files, compress. Empty list — nothing is created.
 
 ---
 
+### `harden.verify`
+
+Runtime smoke — install path, commands, and cron: [Quick start](#quick-start). Checks are gated by the snapshot (only what inventory enabled). Does not brute-force SSH or run `rkhunter --check`; the `sshd` jail is validated via the systemd journal (`ssh.service`), not `/var/log/auth.log`.
+
+| Parameter | Type | Default | Description |
+|----------|-----|--------------|----------|
+| `enabled` | bool | `true` | Install `/usr/local/sbin/harden-check` and write `/var/lib/harden/expected.json`. |
+| `run` | bool | `true` | Execute `harden-check` at the end of the play; non-zero exit fails the play. |
+| `rkhunter_update` | bool | `false` | Pass `--rkhunter-update` to the script (network; runs `rkhunter --update`). Default smoke only checks `WEB_CMD`. |
+
+---
+
 ## Tags
 
 | Tag | Block |
@@ -313,8 +396,9 @@ Rotation: daily, 30 files, compress. Empty list — nothing is created.
 | `harden-updates` | unattended-upgrades |
 | `harden-cron` | cron_jobs |
 | `harden-logrotate` | logrotate |
+| `harden-verify` | Runtime smoke (`harden-check` + expected snapshot) |
 
-Example: `ansible-playbook site.yml --tags harden-fail2ban`.
+Example: `ansible-playbook site.yml --tags harden-fail2ban`. Re-run smoke only: `--tags harden-verify`.
 
 ---
 
@@ -337,6 +421,8 @@ harden:
 ```
 
 `harden.ssh.port` → sshd + fail2ban. UFW — the same port explicitly in `firewall.rules` (set both fields to the same value). Set `ansible_port` to match.
+
+UFW is applied in the firewall block **before** `sshd` restarts (restart is a handler at end of play). A run that switches `22` → `2222` and allows only `2222` closes port 22 while `sshd` still listens there. During a port change, keep **both** ports allowed in `rules`, complete a run so the handler restarts `sshd`, then remove the old port on the next run.
 
 ### SSH access control
 
@@ -397,6 +483,7 @@ Empty lists (default) omit `AllowUsers` / `AllowGroups` so cloud-init users such
 
 ```bash
 ansible-playbook site.yml --tags harden-packages
+sudo harden-check   # expect PASS rkhunter.web_cmd (no network unless --rkhunter-update)
 ```
 
 **Note:** This only enables signature downloads for `rkhunter --update`. Scheduled scans and alerting remain outside this role (see [Limitations and notes](#limitations-and-notes)).
@@ -409,15 +496,33 @@ ansible-playbook site.yml --tags harden-packages
 
 **Fix:** Reboot the host after changing FIM paths or toggling `immutable`. For routine deploys on immutable hosts, expect no rule reload until reboot.
 
+### fail2ban skips jail sshd (`Invalid action definition '[port="22",'`)
+
+**Symptom:** fail2ban fails to start. Journal shows `Invalid action definition '[port="22",'` and `Errors in jail 'sshd'. Skipping...`.
+
+**Cause:** empty `banaction` in `/etc/fail2ban/jail.local`. YAML `null` is a defined value, so Jinja `| default()` does not substitute; fail2ban then builds an action line with no action name.
+
+**Fix:** re-run the role (null/empty `banaction` now becomes `ufw` or `nftables-multiport`). To set it yourself:
+
+```yaml
+harden:
+  fail2ban:
+    banaction: ufw   # or nftables-multiport / iptables-multiport
+```
+
+Then `systemctl restart fail2ban` (or let the play handler do it). Confirm with `sudo harden-check` or `ansible-playbook site.yml --tags harden-verify`.
+
 ---
 
 ## Limitations and notes
 
-- CIS L1/L2 positioning and coverage gaps — see [Security posture](#security-posture).
+- CIS positioning — practical **L1 subset**, not full L1 or L2; see [Security posture](#security-posture).
 - The role targets **Debian/Ubuntu** (`apt`). Other distributions are not supported.
 - Do not enable fail2ban jail `nginx-limit-req` on hosts without nginx — fail2ban will not start.
 - fail2ban `banaction` defaults to `nftables-multiport` when UFW is not managed (`harden.firewall.manage: false`). Set `harden.fail2ban.banaction` to override.
 - rkhunter/chkrootkit: the role installs both and runs `rkhunter --update`; scheduled scans and alerts are outside the role.
-- Changing the SSH port does not update UFW rules automatically — add an explicit firewall rule with the same port literal.
+- Runtime smoke (`harden-check`) is not a CIS audit and does not prove bans fire; see [Quick start](#quick-start).
+- Changing the SSH port does not update UFW rules automatically — add an explicit firewall rule with the same port literal. Mid-play lockout if you drop the old port before `sshd` restarts — see [Custom SSH port](#custom-ssh-port).
+- `net.ipv4.ip_forward` is left unset so Docker bridge/NAT keeps working — see [harden.sysctl](#hardensysctl).
 - `harden.firewall.force_reset: true` — use only deliberately, with a backup of rules.
 - `harden.auditd.immutable: true` — rule changes need a reboot; see [auditd immutable rules](#auditd-immutable-rules--e-2).

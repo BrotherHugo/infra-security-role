@@ -1,0 +1,37 @@
+{# Sanitized runtime-check contract. Never emit admin_user or other secrets. #}
+{% set _banaction = harden.fail2ban.banaction | default(harden.firewall.manage | bool | ternary('ufw', 'nftables-multiport'), true) %}
+{
+  "ssh": {
+    "enabled": {{ harden.ssh.enabled | bool | to_json }},
+    "port": {{ harden.ssh.port | int }},
+    "loglevel": "INFO"
+  },
+  "fail2ban": {
+    "enabled": {{ harden.fail2ban.enabled | bool | to_json }},
+    "banaction": {{ _banaction | string | to_json }},
+    "jails": {
+      "sshd": {
+        "enabled": {{ harden.fail2ban.jails.sshd.enabled | bool | to_json }},
+        "port": {{ harden.ssh.port | int }},
+        "backend": "systemd",
+        "journalmatch": "_SYSTEMD_UNIT=ssh.service"
+      },
+      "nginx-limit-req": {
+        "enabled": {{ harden.fail2ban.jails['nginx-limit-req'].enabled | bool | to_json }},
+        "logpath": {{ harden.fail2ban.jails['nginx-limit-req'].logpath | to_json }}
+      }
+    }
+  },
+  "firewall": {
+    "manage": {{ harden.firewall.manage | bool | to_json }}
+  },
+  "packages": {
+    "rkhunter": {{ harden.packages.rkhunter | bool | to_json }}
+  },
+  "auditd": {
+    "enabled": {{ harden.auditd.enabled | bool | to_json }}
+  },
+  "unattended_upgrades": {
+    "enabled": {{ harden.unattended_upgrades.enabled | bool | to_json }}
+  }
+}

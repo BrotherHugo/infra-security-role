@@ -3,7 +3,8 @@ enabled = true
 port = {{ harden.ssh.port }}
 filter = sshd
 backend = systemd
-journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+{# Unit only: OpenSSH 9.8+ logs as sshd-session, so _COMM=sshd misses bans on Debian 13 / newer Ubuntu. #}
+journalmatch = _SYSTEMD_UNIT=ssh.service
 maxretry = {{ harden.fail2ban.jails.sshd.maxretry }}
 bantime = {{ harden.fail2ban.jails.sshd.bantime }}
 findtime = {{ harden.fail2ban.jails.sshd.findtime }}
