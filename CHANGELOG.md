@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-09-05)
+
+### Features
+
+- BH-6: Follow up 2: fail2ban banaction and sshd jail
+  ([#5](https://github.com/BrotherHugo/infra-security-role/pull/5),
+  [`b09301f`](https://github.com/BrotherHugo/infra-security-role/commit/b09301f77397bbf745d4b7e508c076cbfad25127))
+
+
 ## v1.0.0 (2026-09-05)
 
 ### Features
