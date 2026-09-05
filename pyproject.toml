@@ -7,7 +7,7 @@ description = "Ansible role for Ubuntu/Debian host hardening"
 commit_parser = "conventional"
 tag_format = "v{version}"
 allow_zero_version = true
-major_on_zero = false
+major_on_zero = true
 version_toml = ["pyproject.toml:project.version"]
 
 [tool.semantic_release.branches.main]
