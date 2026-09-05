@@ -2,10 +2,11 @@
 bantime = 86400
 findtime = 600
 maxretry = 3
-banaction = {{ harden.fail2ban.banaction | default(harden.firewall.manage | ternary('ufw', 'nftables-multiport')) }}
+{# default(..., true): YAML null is defined, so bare default() would leave banaction empty and fail2ban would parse action as '[port="22",' #}
+banaction = {{ harden.fail2ban.banaction | default(harden.firewall.manage | bool | ternary('ufw', 'nftables-multiport'), true) }}
 backend = auto
-loglevel = ERROR
+loglevel = INFO
 logtarget = SYSLOG
 syslog_target = /var/log/syslog
 syslog_facility = AUTH
-syslog_priority = ERROR
+syslog_priority = INFO

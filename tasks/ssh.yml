@@ -5,7 +5,7 @@
     dest: /etc/ssh/sshd_config
     owner: root
     group: root
-    mode: "0644"
+    mode: "0600"
     validate: sshd -t -f %s
   when: harden.ssh.manage_main_config | bool
   notify: Restart ssh
@@ -26,6 +26,13 @@
     state: absent
   when: harden.ssh.dropin_path != '/etc/ssh/sshd_config.d/99-harden.conf'
   notify: Restart ssh
+
+- name: Restrict permissions on sshd_config
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
 
 - name: Deploy SSH hardening drop-in
   ansible.builtin.template:

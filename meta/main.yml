@@ -4,8 +4,8 @@ galaxy_info:
   namespace: brotherhugo
   author: BrotherHugo
   description: >-
-    Ubuntu/Debian host hardening — practical CIS L1-style baseline (SSH, UFW, fail2ban,
-    auditd, sysctl, unattended-upgrades). Not a CIS L2 or compliance profile.
+    Ubuntu/Debian host hardening — practical subset of CIS L1 (SSH, UFW, fail2ban,
+    auditd FIM, sysctl, unattended-upgrades). Not full CIS L1/L2 or a compliance profile.
   license: MIT
   min_ansible_version: "2.14"
   platforms:

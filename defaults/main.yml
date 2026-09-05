@@ -82,6 +82,7 @@ _harden_defaults:
 
   sysctl:
     enabled: true
+    # Do not set net.ipv4.ip_forward=0: Docker (bridge/NAT) needs forwarding.
     parameters:
       - { name: net.ipv4.conf.all.rp_filter, value: "1" }
       - { name: net.ipv4.conf.default.rp_filter, value: "1" }
